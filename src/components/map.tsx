@@ -272,10 +272,10 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
             anchor="bottom"
             offset={-15}
           >
-            <div className="p-1 max-w-xs space-y-1">
-              <div className="flex justify-between items-start gap-4">
-                  <h3 className="font-bold text-base text-foreground flex-1">{popupInfo.title}</h3>
-                  <Badge variant={getStatusVariant(popupInfo.status)} className="flex-shrink-0 mt-1">{popupInfo.status}</Badge>
+            <div className="space-y-1">
+              <div className="flex items-start justify-between gap-4">
+                <h3 className="font-bold text-base text-foreground flex-1 pr-4">{popupInfo.title}</h3>
+                <Badge variant={getStatusVariant(popupInfo.status)} className="flex-shrink-0">{popupInfo.status}</Badge>
               </div>
               <p className="text-primary text-sm font-semibold">{popupInfo.category}</p>
               <p className="text-muted-foreground text-xs mt-1">{popupInfo.address}</p>
