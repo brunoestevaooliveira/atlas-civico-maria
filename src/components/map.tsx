@@ -60,8 +60,11 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
   });
 
   const handleMapClick = async (event: MapLayerMouseEvent) => {
-    if (popupInfo) return;
-
+    // Fecha qualquer popup de ocorrência existente antes de criar um novo ponto.
+    if (popupInfo) {
+      setPopupInfo(null);
+    }
+    
     setGeocoding(true);
     const { lng, lat } = event.lngLat;
 
