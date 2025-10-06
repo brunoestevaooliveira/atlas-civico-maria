@@ -3,10 +3,12 @@
 'use client';
 
 import type { Issue } from '@/lib/types';
-import { useState, useMemo, forwardRef } from 'react';
+import { useState, useMemo, forwardRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Map, { Marker, Popup, NavigationControl, GeolocateControl, MapLayerMouseEvent, MapRef } from 'react-map-gl';
 import { supported } from 'mapbox-gl';
+import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
+import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import { Loader2, MapPin } from 'lucide-react';
 import useSupercluster from 'use-supercluster';
 import type { PointFeature } from 'supercluster';
@@ -133,6 +135,23 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
         return 'info';
     }
   };
+
+  useEffect(() => {
+    const map = (ref as React.RefObject<MapRef>)?.current?.getMap();
+    if (map) {
+        const geocoder = new MapboxGeocoder({
+            accessToken: MAPBOX_TOKEN,
+            // @ts-ignore
+            mapboxgl: map,
+        });
+        // Check if control is already added
+        // @ts-ignore
+        if (!map._controls.some(c => c instanceof MapboxGeocoder)) {
+             map.addControl(geocoder, 'top-right');
+        }
+    }
+  }, [ref]);
+
 
   if (!MAPBOX_TOKEN) {
     return (

@@ -126,3 +126,35 @@
   background: hsl(var(--muted)) !important;
   border-radius: 4px;
 }
+
+/* Geocoder Control Styles */
+.mapboxgl-ctrl-geocoder {
+    box-shadow: 0 0 10px 2px rgba(0,0,0,.1) !important;
+    border-radius: 8px !important;
+}
+
+.mapboxgl-ctrl-geocoder--input {
+    background-color: hsl(var(--card)) !important;
+    color: hsl(var(--card-foreground)) !important;
+}
+
+.mapboxgl-ctrl-geocoder--input::placeholder {
+    color: hsl(var(--muted-foreground)) !important;
+}
+
+.mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--icon {
+    fill: hsl(var(--muted-foreground)) !important;
+}
+
+.mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--results {
+    background-color: hsl(var(--card)) !important;
+    border: 1px solid hsl(var(--border)) !important;
+}
+
+.mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--result > a {
+    color: hsl(var(--card-foreground)) !important;
+}
+
+.mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--result:hover {
+    background-color: hsl(var(--accent)) !important;
+}
