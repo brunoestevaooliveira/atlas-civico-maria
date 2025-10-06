@@ -5,11 +5,11 @@ import type { Issue } from '@/lib/types';
 import { useState, useMemo, forwardRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Map, { Marker, Popup, NavigationControl, GeolocateControl, MapLayerMouseEvent, MapRef } from 'react-map-gl';
+import { supported } from 'mapbox-gl';
 import { Loader2, MapPin } from 'lucide-react';
 import useSupercluster from 'use-supercluster';
 import type { PointFeature } from 'supercluster';
 import { Button } from './ui/button';
-import { supported } from 'mapbox-gl';
 import { cn } from '@/lib/utils';
 import { Badge } from './ui/badge';
 
@@ -187,19 +187,17 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
                             className="w-8 h-8 bg-primary/80 text-primary-foreground rounded-full flex items-center justify-center font-bold text-sm cursor-pointer border-2 border-white/50 shadow-md hover:scale-110 transition-transform"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                if (!supercluster) return;
+                                const map = (ref as React.RefObject<MapRef>)?.current;
+                                if (!supercluster || !map) return;
                                 const expansionZoom = Math.min(
                                     supercluster.getClusterExpansionZoom(cluster.id as number),
                                     20
                                 );
-                                const map = (ref as React.RefObject<MapRef>)?.current;
-                                if (map) {
                                   map.flyTo({
                                       center: [longitude, latitude],
                                       duration: 800,
                                       zoom: expansionZoom,
                                   });
-                                }
                             }}
                         >
                             {pointCount}
@@ -297,3 +295,5 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
 MapComponent.displayName = 'MapComponent';
 
 export default MapComponent;
+
+    
