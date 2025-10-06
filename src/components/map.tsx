@@ -8,7 +8,13 @@ import { Loader2, MapPin } from 'lucide-react';
 import useSupercluster from 'use-supercluster';
 import type { PointFeature } from 'supercluster';
 import { Button } from './ui/button';
+import { supported } from 'mapbox-gl';
+import { cn } from '@/lib/utils';
 
+
+if (!supported()) {
+  console.error("Mapbox GL not supported by this browser.");
+}
 interface NewIssueLocation {
   lat: number;
   lng: number;
@@ -93,6 +99,18 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
     return 'mapbox://styles/mapbox/streets-v12';
   }, [mapStyle, theme]);
 
+  const getPinColor = (status: Issue['status']): string => {
+    switch (status) {
+      case 'Resolvido':
+        return 'text-green-500';
+      case 'Em análise':
+        return 'text-yellow-500';
+      case 'Recebido':
+      default:
+        return 'text-sky-500';
+    }
+  };
+
   if (!MAPBOX_TOKEN) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-red-100 text-red-800">
@@ -153,11 +171,13 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
                                     20
                                 );
                                 const map = (ref as React.RefObject<MapRef>)?.current;
-                                map?.flyTo({
-                                    center: [longitude, latitude],
-                                    zoom: expansionZoom,
-                                    speed: 1.5,
-                                });
+                                if (map) {
+                                  map.flyTo({
+                                      center: [longitude, latitude],
+                                      zoom: expansionZoom,
+                                      speed: 1.5,
+                                  });
+                                }
                             }}
                         >
                             {pointCount}
@@ -180,7 +200,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
                         setNewIssueLocation(null);
                         setPopupInfo(issue);
                     }} className="transform hover:scale-125 transition-transform duration-200 ease-in-out">
-                        <MapPin className="h-8 w-8 text-primary fill-current drop-shadow-lg" />
+                        <MapPin className={cn("h-8 w-8 fill-current drop-shadow-lg", getPinColor(issue.status))} />
                     </button>
                 </Marker>
             );
