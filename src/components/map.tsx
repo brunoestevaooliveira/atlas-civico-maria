@@ -10,6 +10,7 @@ import type { PointFeature } from 'supercluster';
 import { Button } from './ui/button';
 import { supported } from 'mapbox-gl';
 import { cn } from '@/lib/utils';
+import { Badge } from './ui/badge';
 
 
 if (!supported()) {
@@ -108,6 +109,18 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
       case 'Recebido':
       default:
         return 'text-sky-500';
+    }
+  };
+  
+  const getStatusVariant = (status: Issue['status']): "success" | "warning" | "info" => {
+    switch (status) {
+      case 'Resolvido':
+        return 'success';
+      case 'Em análise':
+        return 'warning';
+      case 'Recebido':
+      default:
+        return 'info';
     }
   };
 
@@ -247,8 +260,11 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
             anchor="bottom"
             offset={-15}
           >
-            <div className="p-1 max-w-xs">
-              <h3 className="font-bold text-base text-foreground">{popupInfo.title}</h3>
+            <div className="p-1 max-w-xs space-y-1">
+              <div className="flex justify-between items-start">
+                  <h3 className="font-bold text-base text-foreground">{popupInfo.title}</h3>
+                  <Badge variant={getStatusVariant(popupInfo.status)} className="ml-2 flex-shrink-0">{popupInfo.status}</Badge>
+              </div>
               <p className="text-primary text-sm font-semibold">{popupInfo.category}</p>
               <p className="text-muted-foreground text-xs mt-1">{popupInfo.address}</p>
             </div>
