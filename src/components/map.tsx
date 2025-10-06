@@ -215,6 +215,10 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
                         e.stopPropagation();
                         setNewIssueLocation(null);
                         setPopupInfo(issue);
+                        const map = (ref as React.RefObject<MapRef>)?.current;
+                        if (map) {
+                          map.flyTo({ center: [longitude, latitude], speed: 1.5, zoom: Math.max(map.getZoom(), 15) });
+                        }
                     }} className="transform hover:scale-125 transition-transform duration-200 ease-in-out">
                         <MapPin className={cn("h-8 w-8 fill-current drop-shadow-lg", getPinColor(issue.status))} />
                     </button>
