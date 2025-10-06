@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { Issue } from '@/lib/types';
@@ -70,7 +71,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
     
     const map = (ref as React.RefObject<MapRef>)?.current;
     if (map) {
-      map.flyTo({ center: [lng, lat], speed: 1.5, zoom: Math.max(map.getZoom(), 16) });
+      map.flyTo({ center: [lng, lat], duration: 1500, zoom: Math.max(map.getZoom(), 16) });
     }
 
     try {
@@ -195,8 +196,8 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
                                 if (map) {
                                   map.flyTo({
                                       center: [longitude, latitude],
+                                      duration: 800,
                                       zoom: expansionZoom,
-                                      speed: 1.5,
                                   });
                                 }
                             }}
@@ -222,7 +223,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
                         setPopupInfo(issue);
                         const map = (ref as React.RefObject<MapRef>)?.current;
                         if (map) {
-                          map.flyTo({ center: [longitude, latitude], speed: 1.5, zoom: Math.max(map.getZoom(), 15) });
+                          map.flyTo({ center: [longitude, latitude], duration: 1500, zoom: Math.max(map.getZoom(), 15) });
                         }
                     }} className="transform hover:scale-125 transition-transform duration-200 ease-in-out">
                         <MapPin className={cn("h-8 w-8 fill-current drop-shadow-lg", getPinColor(issue.status))} />
