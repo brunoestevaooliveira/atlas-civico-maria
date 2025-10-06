@@ -67,6 +67,11 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
     
     setGeocoding(true);
     const { lng, lat } = event.lngLat;
+    
+    const map = (ref as React.RefObject<MapRef>)?.current;
+    if (map) {
+      map.flyTo({ center: [lng, lat], speed: 1.5, zoom: Math.max(map.getZoom(), 16) });
+    }
 
     try {
       const response = await fetch(
