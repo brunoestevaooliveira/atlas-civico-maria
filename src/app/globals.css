@@ -117,8 +117,8 @@
   font-size: 24px !important;
   line-height: 1;
   padding: 4px;
-  right: 4px !important;
-  top: 4px !important;
+  right: 8px !important;
+  top: 8px !important;
 }
 
 .mapboxgl-popup-close-button:hover {

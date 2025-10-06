@@ -296,5 +296,3 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
 MapComponent.displayName = 'MapComponent';
 
 export default MapComponent;
-
-    
