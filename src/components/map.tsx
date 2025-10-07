@@ -42,6 +42,12 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
   const [zoom, setZoom] = useState(13);
   const [bounds, setBounds] = useState<[number, number, number, number] | undefined>();
 
+  // Coordenadas para limitar a área do mapa a Santa Maria-DF.
+  const santaMariaBounds: [[number, number], [number, number]] = [
+    [-48.036531, -16.067222], // Canto Sudoeste (longitude, latitude)
+    [-47.945858, -15.967430]  // Canto Nordeste (longitude, latitude)
+  ];
+
   const points: PointFeature<{ cluster: false; issue: Issue }>[] = useMemo(() => issues.map(issue => ({
       type: 'Feature',
       properties: {
@@ -167,6 +173,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
           }
       }}
         cursor={geocoding ? 'wait' : 'crosshair'}
+        maxBounds={santaMariaBounds} // Adiciona o limite de navegação aqui.
       >
         <GeolocateControl position="top-left" />
         <NavigationControl position="top-left" />
