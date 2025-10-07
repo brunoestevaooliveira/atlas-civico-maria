@@ -1,3 +1,4 @@
+
 /**
  * @file src/app/page.tsx
  * @fileoverview Componente principal da página do mapa interativo.
@@ -86,29 +87,33 @@ export default function MapPage() {
 
   // --- INICIALIZAÇÃO DO GEOCODER ---
   useEffect(() => {
-    if (!MAPBOX_TOKEN || geocoderRef.current) return;
+    if (!MAPBOX_TOKEN || geocoderRef.current || !geocoderContainerRef.current) return;
     
-    if (geocoderContainerRef.current) {
-        const geocoder = new MapboxGeocoder({
-            accessToken: MAPBOX_TOKEN,
-            marker: false,
-            countries: 'br', 
-            language: 'pt-BR',
-            container: geocoderContainerRef.current,
-        });
+    const geocoder = new MapboxGeocoder({
+        accessToken: MAPBOX_TOKEN,
+        marker: false,
+        countries: 'br', 
+        language: 'pt-BR',
+    });
+    
+    // Anexa o controle a um container, mas o container principal permanece oculto.
+    // Isso é necessário para que a API funcione corretamente.
+    geocoder.addTo(geocoderContainerRef.current);
 
-        geocoder.on('results', (e) => {
-            setGeocoderResults(e.features);
-            setIsGeocoderOpen(e.features.length > 0);
-        });
-        
-        geocoder.on('clear', () => {
-           setGeocoderResults([]);
-           setIsGeocoderOpen(false);
-        });
+    geocoder.on('results', (e) => {
+        setGeocoderResults(e.features);
+        if (e.features.length > 0) {
+            setIsGeocoderOpen(true);
+        }
+    });
+    
+    geocoder.on('clear', () => {
+       setGeocoderResults([]);
+       setIsGeocoderOpen(false);
+    });
 
-        geocoderRef.current = geocoder;
-    }
+    geocoderRef.current = geocoder;
+
 }, []);
 
 
@@ -145,9 +150,9 @@ export default function MapPage() {
   
   // Efeito para acionar a busca do geocoder quando o texto de busca muda
   useEffect(() => {
-    if (debouncedSearchQuery && geocoderRef.current) {
+    if (debouncedSearchQuery.trim() && geocoderRef.current) {
       geocoderRef.current.query(debouncedSearchQuery);
-    } else {
+    } else if (!debouncedSearchQuery.trim()) {
        setGeocoderResults([]);
        setIsGeocoderOpen(false);
     }
