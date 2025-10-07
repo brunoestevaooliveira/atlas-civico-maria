@@ -136,23 +136,6 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
     }
   };
 
-  useEffect(() => {
-    const map = (ref as React.RefObject<MapRef>)?.current?.getMap();
-    if (map) {
-        const geocoder = new MapboxGeocoder({
-            accessToken: MAPBOX_TOKEN!,
-            // @ts-ignore
-            mapboxgl: map,
-        });
-        // Check if control is already added
-        // @ts-ignore - _controls is a private property but helps avoid duplicates
-        if (!map._controls.some(c => c instanceof MapboxGeocoder)) {
-             map.addControl(geocoder, 'top-right');
-        }
-    }
-  }, [ref]);
-
-
   if (!MAPBOX_TOKEN) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-red-100 text-red-800">
@@ -315,5 +298,3 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
 MapComponent.displayName = 'MapComponent';
 
 export default MapComponent;
-
-    

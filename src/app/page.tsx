@@ -8,10 +8,10 @@
 
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Layers, Search, ThumbsUp, MapPin, Filter, List, PanelRightOpen, PanelRightClose, ExternalLink, Globe, Map as MapIcon, Square, Cuboid } from 'lucide-react';
+import { Layers, Search, ThumbsUp, MapPin, Filter, List, PanelRightOpen, PanelRightClose, ExternalLink, Globe, Map as MapIcon, Square, Cuboid, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -35,9 +35,11 @@ import LazyLoad from '@/components/lazy-load';
 import IssueCard from '@/components/issue-card';
 import { useDebounce } from 'use-debounce';
 import { useTheme } from 'next-themes';
+import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 
 // Chave usada para armazenar no localStorage os IDs das ocorrências que o usuário já apoiou.
 const UPVOTED_ISSUES_KEY = 'upvotedIssues';
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 // Importação dinâmica do mapa para desativar a renderização no lado do servidor (SSR).
 const InteractiveMap = dynamic(() => import('@/components/interactive-map'), {
@@ -58,6 +60,8 @@ export default function MapPage() {
   const [upvotedIssues, setUpvotedIssues] = useState(new Set<string>());
   // Armazena o texto digitado pelo usuário na barra de busca.
   const [searchQuery, setSearchQuery] = useState('');
+  const [geocoderResults, setGeocoderResults] = useState<any[]>([]);
+  const [isGeocoderOpen, setIsGeocoderOpen] = useState(false);
   // Versão com "debounce" da busca para evitar re-renderizações excessivas.
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300);
   // Controla a visibilidade dos marcadores de ocorrências no mapa.
@@ -68,12 +72,43 @@ export default function MapPage() {
   const [mapStyle, setMapStyle] = useState<'streets' | 'satellite'>('streets');
   // Referência para o componente do mapa, usada para controlar programaticamente a câmera (zoom, pitch, etc.).
   const mapRef = useRef<MapRef>(null);
+  const geocoderRef = useRef<MapboxGeocoder | null>(null);
 
   // --- HOOKS ---
   const { toast } = useToast();
   const { appUser } = useAuth();
   const router = useRouter();
   const { theme } = useTheme();
+
+  // --- INICIALIZAÇÃO DO GEOCODER ---
+  useEffect(() => {
+    if (!MAPBOX_TOKEN) return;
+    
+    // Inicializa o geocoder apenas uma vez
+    if (!geocoderRef.current) {
+        const geocoder = new MapboxGeocoder({
+            accessToken: MAPBOX_TOKEN,
+            mapboxgl: undefined, // Não vinculamos ao mapa para usar apenas a API
+            marker: false,
+            // Restringe a busca para o Brasil para resultados mais relevantes
+            countries: 'br', 
+            language: 'pt-BR',
+        });
+
+        // Ouvinte para os resultados da busca
+        geocoder.on('results', (e) => {
+            setGeocoderResults(e.features);
+            setIsGeocoderOpen(e.features.length > 0);
+        });
+        
+        geocoder.on('clear', () => {
+           setGeocoderResults([]);
+           setIsGeocoderOpen(false);
+        });
+
+        geocoderRef.current = geocoder;
+    }
+}, []);
 
 
   // --- MEMOS (useMemo) ---
@@ -96,28 +131,28 @@ export default function MapPage() {
 
 
   // Filtra e retorna a lista de ocorrências com base na busca e nos filtros de categoria.
-  // É recalculado apenas quando as dependências (issues, debouncedSearchQuery, selectedCategories) mudam.
   const filteredIssues = useMemo(() => {
     return issues.filter(issue => {
-      // Verifica se o texto de busca corresponde a algum campo da ocorrência.
-      const searchMatch = debouncedSearchQuery.trim() === '' ||
-        issue.title.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-        issue.description.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-        issue.category.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-        issue.address.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
-      
       // Verifica se a categoria da ocorrência está na lista de categorias selecionadas.
       const categoryMatch = selectedCategories.length === 0 || selectedCategories.includes(issue.category);
-
-      return searchMatch && categoryMatch;
+      return categoryMatch;
     });
-  }, [issues, debouncedSearchQuery, selectedCategories]);
+  }, [issues, selectedCategories]);
 
 
   // --- EFEITOS (useEffect) ---
+  
+  // Efeito para acionar a busca do geocoder quando o texto de busca muda
+  useEffect(() => {
+    if (debouncedSearchQuery && geocoderRef.current) {
+      geocoderRef.current.query(debouncedSearchQuery);
+    } else {
+       setGeocoderResults([]);
+       setIsGeocoderOpen(false);
+    }
+  }, [debouncedSearchQuery]);
 
   // Efeito que se inscreve para ouvir as atualizações de ocorrências do Firestore em tempo real.
-  // A função de 'cleanup' (retorno) cancela a inscrição para evitar memory leaks.
   useEffect(() => {
     const unsubscribe = listenToIssues(setIssues);
     return () => unsubscribe();
@@ -141,8 +176,6 @@ export default function MapPage() {
 
   /**
    * Manipula a lógica de apoio (upvote) a uma ocorrência.
-   * Verifica se o usuário está logado e se já não apoiou a ocorrência.
-   * Atualiza o estado local e o localStorage, e então envia a atualização para o Firestore.
    * @param issueId ID da ocorrência a ser apoiada.
    * @param currentUpvotes Número atual de apoios.
    */
@@ -156,21 +189,15 @@ export default function MapPage() {
         return router.push('/login');
     }
 
-    // Impede apoios múltiplos.
-    if (upvotedIssues.has(issueId)) {
-      return; 
-    }
+    if (upvotedIssues.has(issueId)) return; 
     
-    // Atualização otimista da UI
     const newUpvotedSet = new Set(upvotedIssues).add(issueId);
     setUpvotedIssues(newUpvotedSet);
 
     try {
-      // Atualiza o Firestore e o localStorage em caso de sucesso.
       await updateIssueUpvotes(issueId, currentUpvotes + 1);
        localStorage.setItem(`${UPVOTED_ISSUES_KEY}_${appUser.uid}`, JSON.stringify(Array.from(newUpvotedSet)));
     } catch (error) {
-       // Reverte a UI em caso de erro.
        const revertedUpvotedSet = new Set(upvotedIssues);
        revertedUpvotedSet.delete(issueId);
        setUpvotedIssues(revertedUpvotedSet);
@@ -185,7 +212,6 @@ export default function MapPage() {
 
   /**
    * Manipula a mudança de seleção de uma categoria no filtro.
-   * Adiciona ou remove a categoria da lista de categorias selecionadas.
    * @param category A categoria que foi clicada.
    */
   const handleCategoryChange = (category: string) => {
@@ -196,25 +222,20 @@ export default function MapPage() {
     );
   };
   
-  /**
-   * Usa a API do mapa para animar a câmera para uma visão 3D (isométrica).
-   */
-  const set3DView = () => {
-    mapRef.current?.flyTo({ pitch: 60, bearing: -20, duration: 1500 });
-  };
-  
-  /**
-   * Usa a API do mapa para animar a câmera para uma visão 2D (de cima).
-   */
-  const set2DView = () => {
-    mapRef.current?.flyTo({ pitch: 0, bearing: 0, duration: 1500 });
-  };
+  const set3DView = () => mapRef.current?.flyTo({ pitch: 60, bearing: -20, duration: 1500 });
+  const set2DView = () => mapRef.current?.flyTo({ pitch: 0, bearing: 0, duration: 1500 });
 
+  const handleGeocoderResultClick = (result: any) => {
+      const [lng, lat] = result.center;
+      mapRef.current?.flyTo({
+          center: [lng, lat],
+          zoom: 16,
+          duration: 1500,
+      });
+      setSearchQuery(result.place_name);
+      setIsGeocoderOpen(false);
+  }
 
-  /**
-   * Componente que renderiza a lista de ocorrências recentes.
-   * É separado para ser reutilizado no painel de desktop e na gaveta móvel.
-   */
   const RecentIssuesPanelContent = () => (
       <div className="space-y-4">
         {filteredIssues.length > 0 ? filteredIssues.sort((a, b) => b.reportedAt.getTime() - a.reportedAt.getTime()).map((issue) => (
@@ -231,20 +252,36 @@ export default function MapPage() {
       </div>
   );
 
-  /**
-   * Componente que renderiza os controles do mapa (busca, filtros, etc.).
-   * Reutilizado no painel de desktop e na gaveta móvel.
-   */
   const MapControlsContent = () => (
     <div className="space-y-4">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Buscar ocorrência..."
+          placeholder="Buscar endereço..."
           className="pl-10 bg-background/80 focus:border-primary"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          onFocus={() => { if (geocoderResults.length > 0) setIsGeocoderOpen(true); }}
         />
+        {searchQuery && (
+            <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7" onClick={() => setSearchQuery('')}>
+                <X className="h-4 w-4"/>
+            </Button>
+        )}
+        {isGeocoderOpen && geocoderResults.length > 0 && (
+          <div className="absolute top-full mt-2 w-full bg-background border border-border rounded-md shadow-lg z-20">
+              <ul className="py-1">
+                  {geocoderResults.map((result) => (
+                      <li key={result.id} 
+                          className="px-3 py-2 text-sm cursor-pointer hover:bg-accent"
+                          onClick={() => handleGeocoderResultClick(result)}
+                      >
+                          {result.place_name}
+                      </li>
+                  ))}
+              </ul>
+          </div>
+        )}
       </div>
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
@@ -259,7 +296,6 @@ export default function MapPage() {
             <TooltipProvider>
                <Tooltip>
                 <TooltipTrigger asChild>
-                  {/* Botão para alternar entre mapa de ruas e satélite */}
                   <Button variant="ghost" size="icon" onClick={() => setMapStyle(style => style === 'streets' ? 'satellite' : 'streets')}>
                       {mapStyle === 'streets' ? <Globe className="h-5 w-5 text-primary"/> : <MapIcon className="h-5 w-5 text-primary"/>}
                   </Button>
@@ -268,7 +304,6 @@ export default function MapPage() {
                    <p>Mudar para vista {mapStyle === 'streets' ? 'Satélite' : 'Ruas'}</p>
                 </TooltipContent>
               </Tooltip>
-              {/* Popover para filtrar por categorias */}
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="ghost" size="icon">
@@ -300,7 +335,6 @@ export default function MapPage() {
                 </PopoverContent>
               </Popover>
               <Separator orientation="vertical" className="h-6 mx-1" />
-              {/* Botões de controle da câmera 2D/3D */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" onClick={set2DView}>
@@ -328,23 +362,19 @@ export default function MapPage() {
   );
   
 
-  // --- RENDERIZAÇÃO DO COMPONENTE ---
   return (
-    <div className="h-screen w-screen flex flex-col pt-0 overflow-hidden">
+    <div className="h-screen w-screen flex flex-col pt-0 overflow-hidden" onClick={() => setIsGeocoderOpen(false)}>
       <div className="relative flex-grow">
-        {/* O mapa interativo ocupa todo o espaço disponível. */}
         <InteractiveMap issues={showIssues ? filteredIssues : []} mapStyle={mapStyle} ref={mapRef} theme={theme}/>
 
-        {/* Painel de Controle (apenas Desktop) */}
-        <div className="absolute top-24 left-4 z-10 hidden md:block w-80 space-y-4">
+        <div className="absolute top-24 left-4 z-10 hidden md:block w-96 space-y-4">
           <Card className="rounded-lg border border-white/20 bg-white/30 dark:bg-black/30 shadow-lg backdrop-blur-xl">
-            <CardContent className="p-4">
+            <CardContent className="p-4" onClick={(e) => e.stopPropagation()}>
               <MapControlsContent />
             </CardContent>
           </Card>
         </div>
 
-        {/* Card de instrução para reportar, posicionado na parte inferior central */}
         <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-10 w-full max-w-sm md:max-w-md px-4">
           <Card className="rounded-lg border border-white/20 bg-white/30 dark:bg-black/30 shadow-lg backdrop-blur-xl">
             <CardContent className="p-3">
@@ -360,7 +390,6 @@ export default function MapPage() {
           </Card>
         </div>
 
-        {/* Painel lateral de ocorrências recentes (Desktop) */}
         <div className="absolute top-24 right-4 z-10 max-h-[calc(100vh-8rem)] hidden md:block">
           {!isDesktopPanelOpen && (
             <Button size="icon" className="rounded-full shadow-lg" onClick={() => setIsDesktopPanelOpen(true)}>
@@ -391,9 +420,7 @@ export default function MapPage() {
           </div>
         </div>
         
-        {/* Controles Mobile (Gavetas para Ocorrências e Filtros) */}
         <div className="absolute top-24 right-4 z-10 md:hidden flex flex-col gap-2">
-           {/* Gatilho para abrir a gaveta de ocorrências */}
            <Sheet>
             <SheetTrigger asChild>
                 <Button size="icon" className="rounded-full shadow-lg">
@@ -410,7 +437,6 @@ export default function MapPage() {
                 </div>
             </SheetContent>
           </Sheet>
-          {/* Gatilho para abrir a gaveta de filtros */}
           <Sheet>
             <SheetTrigger asChild>
                 <Button size="icon" className="rounded-full shadow-lg">
