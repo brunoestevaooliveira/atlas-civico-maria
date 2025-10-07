@@ -36,6 +36,8 @@ import IssueCard from '@/components/issue-card';
 import { useDebounce } from 'use-debounce';
 import { useTheme } from 'next-themes';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
+import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
+
 
 // Chave usada para armazenar no localStorage os IDs das ocorrências que o usuário já apoiou.
 const UPVOTED_ISSUES_KEY = 'upvotedIssues';
@@ -73,6 +75,8 @@ export default function MapPage() {
   // Referência para o componente do mapa, usada para controlar programaticamente a câmera (zoom, pitch, etc.).
   const mapRef = useRef<MapRef>(null);
   const geocoderRef = useRef<MapboxGeocoder | null>(null);
+  const geocoderContainerRef = useRef<HTMLDivElement>(null);
+
 
   // --- HOOKS ---
   const { toast } = useToast();
@@ -82,20 +86,17 @@ export default function MapPage() {
 
   // --- INICIALIZAÇÃO DO GEOCODER ---
   useEffect(() => {
-    if (!MAPBOX_TOKEN) return;
+    if (!MAPBOX_TOKEN || geocoderRef.current) return;
     
-    // Inicializa o geocoder apenas uma vez
-    if (!geocoderRef.current) {
+    if (geocoderContainerRef.current) {
         const geocoder = new MapboxGeocoder({
             accessToken: MAPBOX_TOKEN,
-            mapboxgl: undefined, // Não vinculamos ao mapa para usar apenas a API
             marker: false,
-            // Restringe a busca para o Brasil para resultados mais relevantes
             countries: 'br', 
             language: 'pt-BR',
+            container: geocoderContainerRef.current,
         });
 
-        // Ouvinte para os resultados da busca
         geocoder.on('results', (e) => {
             setGeocoderResults(e.features);
             setIsGeocoderOpen(e.features.length > 0);
@@ -364,6 +365,7 @@ export default function MapPage() {
 
   return (
     <div className="h-screen w-screen flex flex-col pt-0 overflow-hidden" onClick={() => setIsGeocoderOpen(false)}>
+      <div ref={geocoderContainerRef} className="hidden"></div>
       <div className="relative flex-grow">
         <InteractiveMap issues={showIssues ? filteredIssues : []} mapStyle={mapStyle} ref={mapRef} theme={theme}/>
 
