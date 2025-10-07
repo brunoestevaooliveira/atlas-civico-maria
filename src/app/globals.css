@@ -110,7 +110,7 @@
 }
 
 .mapboxgl-popup-content {
-  background: hsla(var(--card), 0.8) !important;
+  background: hsla(var(--card), 0.9) !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
   color: hsl(var(--card-foreground)) !important;
@@ -124,7 +124,7 @@
 }
 
 .mapboxgl-popup-tip {
-  border-top-color: hsla(var(--card), 0.8) !important;
+  border-top-color: hsla(var(--card), 0.9) !important;
 }
 
 .mapboxgl-popup-close-button {
@@ -176,3 +176,6 @@
     background-color: hsl(var(--accent)) !important;
 }
 
+
+
+    
