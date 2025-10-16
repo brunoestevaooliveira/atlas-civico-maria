@@ -1,4 +1,15 @@
-
+/**
+ * @file src/components/map.tsx
+ * @fileoverview Componente principal de implementação do mapa interativo.
+ * @important Ponto chave de implementação: Lógica do Mapa.
+ * Este componente contém toda a lógica de renderização e interação com a biblioteca
+ * `react-map-gl`. Ele é responsável por:
+ * - Renderizar o mapa base do Mapbox.
+ * - Gerenciar clusters de marcadores para otimizar a performance com `use-supercluster`.
+ * - Exibir marcadores individuais e clusters no mapa.
+ * - Controlar a exibição de pop-ups quando um marcador é clicado.
+ * - Lidar com cliques no mapa para criar uma nova ocorrência, incluindo geocodificação reversa.
+ */
 
 'use client';
 
@@ -16,7 +27,7 @@ import { Badge } from './ui/badge';
 
 
 if (!supported()) {
-  console.error("Mapbox GL not supported by this browser.");
+  console.error("Mapbox GL não é suportado neste navegador.");
 }
 interface NewIssueLocation {
   lat: number;
@@ -33,12 +44,17 @@ interface MapComponentProps {
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
+/**
+ * @component MapComponent
+ * @description O componente que renderiza e controla o mapa do Mapbox.
+ */
 const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, mapStyle, theme }, ref) => {
   const router = useRouter();
   const [popupInfo, setPopupInfo] = useState<Issue | null>(null);
   const [newIssueLocation, setNewIssueLocation] = useState<NewIssueLocation | null>(null);
   const [geocoding, setGeocoding] = useState(false);
   
+  // Estado para o zoom e limites (bounds) do mapa, essenciais para o clustering.
   const [zoom, setZoom] = useState(13);
   const [bounds, setBounds] = useState<[number, number, number, number] | undefined>();
 
@@ -48,6 +64,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
     [-47.945858, -15.967430]  // Canto Nordeste (longitude, latitude)
   ];
 
+  // Converte a lista de ocorrências em um formato de "pontos" que o `useSupercluster` pode entender.
   const points: PointFeature<{ cluster: false; issue: Issue }>[] = useMemo(() => issues.map(issue => ({
       type: 'Feature',
       properties: {
@@ -60,6 +77,12 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
       },
   })), [issues]);
 
+  /**
+   * @important Otimização de Performance com `useSupercluster`.
+   * Este hook é o núcleo da clusterização. Ele agrupa marcadores próximos em um único
+   * ponto (cluster) em níveis de zoom mais baixos, evitando a renderização de milhares
+   * de marcadores de uma vez e melhorando drasticamente a performance do mapa.
+   */
   const { clusters, supercluster } = useSupercluster({
     points,
     bounds,
@@ -67,8 +90,12 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
     options: { radius: 75, maxZoom: 20 },
   });
 
+  /**
+   * @function handleMapClick
+   * @description Lida com o clique no mapa, obtém as coordenadas e faz a geocodificação
+   * reversa para encontrar o endereço antes de criar um pop-up para o novo reporte.
+   */
   const handleMapClick = async (event: MapLayerMouseEvent) => {
-    // Fecha qualquer popup de ocorrência existente antes de criar um novo ponto.
     if (popupInfo) {
       setPopupInfo(null);
     }
@@ -82,6 +109,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
     }
 
     try {
+      // API de Geocodificação Reversa do Mapbox para obter endereço a partir das coordenadas.
       const response = await fetch(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${MAPBOX_TOKEN}`
       );
@@ -99,6 +127,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
     }
   };
 
+  // Redireciona o usuário para a página de reporte com as coordenadas na URL.
   const handleConfirmLocation = () => {
     if (!newIssueLocation) return;
     const { lat, lng, address } = newIssueLocation;
@@ -106,6 +135,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
     setNewIssueLocation(null);
   };
 
+  // Determina qual estilo de mapa usar com base no estado e no tema.
   const mapStyleUrl = useMemo(() => {
     if (mapStyle === 'satellite') {
       return 'mapbox://styles/mapbox/satellite-streets-v12';
@@ -116,6 +146,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
     return 'mapbox://styles/mapbox/streets-v12';
   }, [mapStyle, theme]);
 
+  // Funções auxiliares para estilização dos marcadores.
   const getPinColor = (status: Issue['status']): string => {
     switch (status) {
       case 'Resolvido':
@@ -178,6 +209,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
         <GeolocateControl position="top-left" />
         <NavigationControl position="top-left" />
 
+        {/* Mapeia os clusters e marcadores individuais para renderização */}
         {clusters.map(cluster => {
             const properties = cluster.properties as {
               cluster?: boolean;
@@ -186,6 +218,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
             };
             const [longitude, latitude] = cluster.geometry.coordinates as [number, number];
 
+            // Se for um cluster, renderiza o marcador de cluster.
             if (properties.cluster) {
                 const pointCount = properties.point_count ?? 0;
                 
@@ -214,6 +247,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
                 );
             }
 
+            // Se for um ponto individual, renderiza o marcador de ocorrência.
             const issue = properties.issue;
             if (!issue) return null;
 
@@ -238,6 +272,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
             );
         })}
         
+        {/* Pop-up para criar uma nova ocorrência */}
         {newIssueLocation && (
           <>
             <Marker 
@@ -270,6 +305,7 @@ const MapComponent = forwardRef<MapRef, MapComponentProps>(({ issues, center, ma
           </>
         )}
 
+        {/* Pop-up para exibir informações de uma ocorrência existente */}
         {popupInfo && (
           <Popup
             longitude={popupInfo.location.lng}

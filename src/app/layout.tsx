@@ -24,9 +24,10 @@ import { useTheme } from 'next-themes';
 
 
 /**
- * Componente interno que gerencia a lógica de renderização do conteúdo principal.
+ * @component LayoutContent
+ * @description Componente interno que gerencia a lógica de renderização do conteúdo principal.
  * Ele decide o que mostrar com base no estado de autenticação, na rota atual
- * e no estado de carregamento do splash screen.
+ * e no estado de carregamento do splash screen. É o "cérebro" do layout.
  * @param {object} props - Propriedades do componente.
  * @param {React.ReactNode} props.children - O conteúdo da página a ser renderizado.
  */
@@ -64,7 +65,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     };
   }, [isSplashPage]);
   
-  // Efeito principal para controle de acesso às rotas.
+  // Efeito principal para controle de acesso às rotas (gatekeeper).
   useEffect(() => {
     // Não faz nada enquanto o estado de autenticação está sendo verificado.
     if (isLoading) {
@@ -116,7 +117,9 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Componente Raiz do Layout.
+ * @component RootLayout
+ * @description Componente Raiz do Layout. Envolve toda a aplicação com os provedores de contexto
+ * essenciais, como Autenticação (AuthProvider) e Tema (ThemeProvider).
  * @param {object} props - Propriedades do componente.
  * @param {React.ReactNode} props.children - Conteúdo da aplicação aninhado.
  */
@@ -132,7 +135,7 @@ export default function RootLayout({
         <meta name="description" content="Plataforma cívica para mapeamento e resolução de problemas urbanos em Santa Maria-DF." />
       </head>
       <body className={cn('min-h-screen font-sans antialiased')}>
-        {/* Envolve toda a aplicação com os provedores de contexto. */}
+        {/* Ponto crucial: Injeção dos provedores de contexto que estarão disponíveis em toda a árvore de componentes. */}
         <AuthProvider>
           <ThemeProvider attribute="class" defaultTheme="light">
               <LayoutContent>{children}</LayoutContent>

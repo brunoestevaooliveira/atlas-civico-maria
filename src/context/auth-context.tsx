@@ -1,9 +1,11 @@
 /**
  * @file src/context/auth-context.tsx
  * @fileoverview Provedor de Contexto para Autenticação.
- * Este arquivo gerencia o estado global de autenticação do usuário, interage com o Firebase Auth
- * e Firestore para obter dados do usuário, e fornece funções de login, logout e registro
- * para toda a aplicação. Também controla a lógica para exibir o tutorial para novos usuários.
+ * @important Ponto chave de arquitetura: Gerenciamento de Estado Global.
+ * Este arquivo é um dos mais importantes da aplicação. Ele cria um Contexto React que gerencia
+ * o estado de autenticação do usuário, interage com o Firebase Auth e Firestore, e fornece
+ * funções (login, logout, registro) e dados (usuário, status de admin, etc.) para toda a
+ * árvore de componentes. Isso evita "prop drilling" e centraliza toda a lógica de autenticação.
  */
 
 'use client';
@@ -29,7 +31,9 @@ import { useToast } from '@/hooks/use-toast';
 const TUTORIAL_COMPLETED_KEY = 'tutorialCompleted';
 
 /**
- * Interface que define a estrutura do contexto de autenticação.
+ * @interface AuthContextType
+ * @description Define a "forma" do nosso contexto: quais valores e funções ele irá fornecer
+ * para os componentes que o consumirem.
  */
 interface AuthContextType {
   /** O objeto de usuário do Firebase Auth, ou null se não estiver logado. */
@@ -54,10 +58,12 @@ interface AuthContextType {
   logout: () => Promise<void>;
 }
 
+// Cria o contexto com um valor inicial `undefined`.
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /**
- * Busca os dados do perfil do usuário no Firestore.
+ * @function fetchAppUser
+ * @description Busca os dados do perfil do usuário no Firestore.
  * @param {string} uid O ID do usuário.
  * @returns {Promise<AppUser | null>} O objeto AppUser ou null se não for encontrado.
  */
@@ -78,7 +84,8 @@ const fetchAppUser = async (uid: string): Promise<AppUser | null> => {
 }
 
 /**
- * Componente Provedor que envolve a aplicação e fornece o contexto de autenticação.
+ * @component AuthProvider
+ * @description O componente Provedor que envolve a aplicação e fornece o contexto de autenticação.
  */
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [authUser, setAuthUser] = useState<User | null>(null);
@@ -89,17 +96,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
   const { toast } = useToast();
 
-  // Efeito principal que ouve as mudanças no estado de autenticação do Firebase.
+  /**
+   * @important Ponto chave de funcionamento: `onAuthStateChanged`.
+   * Este é o principal listener do Firebase Auth. Ele é disparado sempre que o estado de
+   * login do usuário muda (login, logout, token atualizado). É aqui que o estado local
+   * (authUser, appUser, isAdmin) é sincronizado com o estado do Firebase.
+   */
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setIsLoading(true);
       if (user) {
         setAuthUser(user);
         
-        // Verifica se é um usuário novo comparando o tempo de criação com o último login.
         const isNewUser = user.metadata.creationTime === user.metadata.lastSignInTime;
-
-        // Verifica se o tutorial já foi concluído no localStorage.
         const tutorialCompleted = localStorage.getItem(TUTORIAL_COMPLETED_KEY);
 
         // Mostra o tutorial apenas se for um usuário novo E ele ainda não viu o tutorial.
@@ -107,7 +116,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setShowTutorial(true);
         }
 
-        // Busca o perfil do usuário no Firestore para obter o 'role'.
+        // Busca o perfil do usuário no Firestore para obter o 'role' e outros dados.
         const appProfile = await fetchAppUser(user.uid);
         
         if (appProfile) {
@@ -115,9 +124,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             // Define o status de admin com base no campo 'role' do documento do Firestore.
             setIsAdmin(appProfile.role === 'admin');
         } else {
-            // Se o perfil não existe, cria um novo.
+            // Se o perfil não existe (ex: primeiro login com Google), cria um novo.
             await handleNewUser(user);
-            // Novos usuários não são admins por padrão.
             setIsAdmin(false);
         }
 
@@ -126,7 +134,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setAuthUser(null);
         setAppUser(null);
         setIsAdmin(false);
-        setShowTutorial(false); // Reseta ao fazer logout.
+        setShowTutorial(false);
       }
       setIsLoading(false);
     });
@@ -136,16 +144,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   /**
-   * Cria um novo documento de usuário no Firestore.
+   * @function handleNewUser
+   * @description Cria um novo documento de usuário no Firestore.
    * Chamado no registro ou no primeiro login com um provedor social.
    * @param {User} user O objeto de usuário do Firebase Auth.
-   * @param {string | null} [name] O nome do usuário (opcional, usado no registro por email).
+   * @param {string | null} [name] O nome do usuário (opcional).
    */
   const handleNewUser = async (user: User, name?: string | null) => {
     const userRef = doc(db, 'users', user.uid);
     const docSnap = await getDoc(userRef);
 
-    // Se o documento já existe, apenas atualiza o estado local.
     if (docSnap.exists()) { 
         const appProfile = await fetchAppUser(user.uid);
         if (appProfile) {
@@ -155,64 +163,54 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
     }
     
-    // Define o nome do novo usuário.
     const newName = name || user.displayName || user.email?.split('@')[0] || 'Usuário';
     
+    // Estrutura do documento a ser salvo no Firestore.
     const newUserDocData: AppUserData = {
         uid: user.uid,
         email: user.email,
         name: newName,
         photoURL: user.photoURL,
-        role: 'user', // Papel padrão para novos usuários.
+        role: 'user', // Papel padrão.
         createdAt: serverTimestamp() as Timestamp,
-        issuesReported: 0, // Inicia a contagem de ocorrências
+        issuesReported: 0,
     };
     
     await setDoc(userRef, newUserDocData);
 
-    // Atualiza o estado local com os dados do novo usuário para evitar uma nova leitura.
+    // Atualiza o estado local para refletir o novo usuário imediatamente.
     const newAppUser: AppUser = {
         uid: newUserDocData.uid,
         email: newUserDocData.email,
         name: newUserDocData.name,
         photoURL: newUserDocData.photoURL,
         role: newUserDocData.role,
-        createdAt: new Date(), // Valor aproximado, o valor real está no servidor.
+        createdAt: new Date(),
         issuesReported: newUserDocData.issuesReported,
     };
     setAppUser(newAppUser);
   }
 
-  /**
-   * Registra um novo usuário com email, senha e nome.
-   */
+  // Funções de autenticação que serão expostas pelo contexto.
   const register = async (email: string, pass: string, name: string) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
     await handleNewUser(userCredential.user, name);
-    // O listener onAuthStateChanged cuidará de exibir o tutorial.
   };
 
-  /**
-   * Autentica um usuário com email e senha.
-   */
   const login = async (email: string, pass: string) => {
     await signInWithEmailAndPassword(auth, email, pass);
   };
 
-  /**
-   * Autentica um usuário com o provedor do Google.
-   */
   const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     try {
         await signInWithPopup(auth, provider);
     } catch (error: any) {
-        // Tratamento de erros comuns do login com Google.
         let description = error.message || 'Não foi possível autenticar com o Google.';
         if (error.code === 'auth/unauthorized-domain') {
             description = 'Este domínio não está autorizado para login. Por favor, adicione-o no Console do Firebase > Authentication > Settings > Authorized domains.';
         } else if (error.code === 'auth/popup-closed-by-user') {
-            return; // Não mostra erro se o usuário simplesmente fechar o pop-up.
+            return;
         }
         
         console.error("Erro no Login com Google:", error);
@@ -225,15 +223,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  /**
-   * Desconecta o usuário atual e o redireciona para a página de login.
-   */
   const logout = async () => {
     await signOut(auth);
     router.push('/login');
   };
 
-  // Fornece os valores de estado e as funções para os componentes filhos.
+  // Fornece os valores (estado e funções) para os componentes filhos.
   return (
     <AuthContext.Provider value={{ authUser, appUser, isLoading, isAdmin, showTutorial, setShowTutorial, register, login, loginWithGoogle, logout }}>
       {children}
@@ -242,7 +237,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 };
 
 /**
- * Hook customizado para acessar o contexto de autenticação.
+ * @function useAuth
+ * @description Hook customizado para facilitar o consumo do AuthContext.
+ * Em vez de usar `useContext(AuthContext)` em cada componente, basta usar `useAuth()`.
  * @returns {AuthContextType} O objeto do contexto de autenticação.
  * @throws {Error} Se for usado fora de um `AuthProvider`.
  */

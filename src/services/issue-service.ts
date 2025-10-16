@@ -1,8 +1,12 @@
 /**
  * @file src/services/issue-service.ts
- * @fileoverview Este arquivo contém toda a lógica para interagir com a coleção 'issues' no Firestore.
- * Inclui funções para criar, ler, atualizar e excluir ocorrências, bem como
- * para adicionar e excluir comentários.
+ * @fileoverview Camada de Serviço para Ocorrências (Issues).
+ * @important Ponto chave de arquitetura: Abstração do Backend.
+ * Este arquivo centraliza toda a lógica de comunicação com o Firestore para a coleção 'issues'.
+ * Ao criar esta camada de serviço, desacoplamos a lógica de negócios (o que a aplicação faz)
+ * da lógica de dados (como os dados são salvos/lidos). Se no futuro decidirmos trocar o
+ * Firestore por outro banco de dados, só precisaremos modificar este arquivo, e o resto da
+ * aplicação continuará funcionando sem alterações.
  */
 
 'use client';
@@ -31,11 +35,13 @@ import { v4 as uuidv4 } from 'uuid';
 
 
 /**
- * Converte um documento do Firestore (IssueData) para um objeto do tipo Issue, 
- * que é mais fácil de usar no frontend (ex: convertendo Timestamps para objetos Date).
- * @param {any} docData Os dados do documento do Firestore.
+ * @function fromFirestore
+ * @description Converte um documento do Firestore (IssueData) para um objeto de domínio (Issue).
+ * Essa transformação é importante para adaptar os tipos de dados do backend (ex: Timestamp, GeoPoint)
+ * para formatos mais fáceis de usar no frontend (ex: Date, {lat, lng}).
+ * @param {any} docData Os dados brutos do documento do Firestore.
  * @param {string} id O ID do documento.
- * @returns {Issue} O objeto de ocorrência formatado.
+ * @returns {Issue} O objeto de ocorrência formatado para uso na UI.
  */
 const fromFirestore = (docData: any, id: string): Issue => {
   const data = docData as IssueData;
@@ -55,7 +61,7 @@ const fromFirestore = (docData: any, id: string): Issue => {
     reporter: data.reporter,
     reporterId: data.reporterId,
     upvotes: data.upvotes || 0,
-    // Converte os Timestamps dos comentários para Datas e os ordena do mais recente para o mais antigo.
+    // Converte os Timestamps dos comentários para Datas e os ordena.
     comments: (data.comments || []).map(comment => ({
       ...comment,
       createdAt: (comment.createdAt as Timestamp).toDate(),
@@ -77,11 +83,10 @@ export type NewIssue = {
 };
 
 /**
- * Adiciona uma nova ocorrência ao Firestore.
- * Esta função é chamada a partir do lado do cliente.
+ * @function addIssueClient
+ * @description Adiciona uma nova ocorrência ao Firestore. Chamada pelo lado do cliente.
  * @param {NewIssue} issue O objeto da nova ocorrência.
  * @returns {Promise<string>} O ID do documento recém-criado.
- * @throws {Error} Se algum campo obrigatório estiver faltando ou for inválido.
  */
 export async function addIssueClient(issue: NewIssue) {
   // Validação dos dados de entrada.
@@ -99,7 +104,8 @@ export async function addIssueClient(issue: NewIssue) {
   }
 
   const ref = collection(db, "issues");
-  // Cria o payload para o Firestore, convertendo a localização para GeoPoint e usando serverTimestamp.
+  
+  // Cria o payload para o Firestore, convertendo os tipos de dados conforme necessário.
   const payload: Omit<IssueData, 'reportedAt'> & { reportedAt: any } = {
     title: issue.title.trim(),
     description: issue.description.trim(),
@@ -109,15 +115,15 @@ export async function addIssueClient(issue: NewIssue) {
     reporter: issue.reporter,
     reporterId: issue.reporterId,
     address: issue.address.trim(),
-    imageUrl: `https://placehold.co/600x400.png?text=${encodeURIComponent(issue.title)}`, // Imagem de placeholder.
+    imageUrl: `https://placehold.co/600x400.png?text=${encodeURIComponent(issue.title)}`,
     reportedAt: serverTimestamp(), // Usa o timestamp do servidor para consistência.
-    location: new GeoPoint(issue.location.lat, issue.location.lng),
+    location: new GeoPoint(issue.location.lat, issue.location.lng), // Converte para GeoPoint.
     comments: [], // Inicializa com um array de comentários vazio.
   };
 
   const docRef = await addDoc(ref, payload);
 
-  // Incrementa o contador de ocorrências do usuário.
+  // Ação secundária: incrementa o contador de ocorrências do usuário.
   const userRef = doc(db, "users", issue.reporterId);
   await updateDoc(userRef, {
     issuesReported: increment(1)
@@ -127,7 +133,8 @@ export async function addIssueClient(issue: NewIssue) {
 }
 
 /**
- * Busca todas as ocorrências do Firestore uma única vez.
+ * @function getIssues
+ * @description Busca todas as ocorrências do Firestore uma única vez (não em tempo real).
  * @returns {Promise<Issue[]>} Uma lista de todas as ocorrências.
  */
 export const getIssues = async (): Promise<Issue[]> => {
@@ -137,9 +144,11 @@ export const getIssues = async (): Promise<Issue[]> => {
 };
 
 /**
- * Inscreve-se para ouvir atualizações em tempo real da coleção de ocorrências.
+ * @function listenToIssues
+ * @description Inscreve-se para ouvir atualizações em tempo real da coleção de ocorrências.
+ * Esta é a principal função para manter a UI sincronizada com o banco de dados.
  * @param {(issues: Issue[]) => void} callback A função a ser chamada com a lista de ocorrências sempre que houver uma atualização.
- * @returns {() => void} Uma função para cancelar a inscrição (unsubscribe).
+ * @returns {() => void} Uma função para cancelar a inscrição (unsubscribe), crucial para evitar memory leaks.
  */
 export const listenToIssues = (callback: (issues: Issue[]) => void): (() => void) => {
   const q = query(collection(db, 'issues'), orderBy('reportedAt', 'desc'));
@@ -148,15 +157,13 @@ export const listenToIssues = (callback: (issues: Issue[]) => void): (() => void
     callback(issues);
   }, (error) => {
     console.error("Erro no listener do Firestore:", error);
-    // Opcionalmente, informar o usuário que as atualizações em tempo real falharam.
   });
   return unsubscribe; // Retorna a função de cancelamento.
 };
 
 /**
- * Atualiza o número de apoios (upvotes) de uma ocorrência.
- * @param {string} issueId O ID da ocorrência.
- * @param {number} newUpvotes O novo número de apoios.
+ * @function updateIssueUpvotes
+ * @description Atualiza o número de apoios (upvotes) de uma ocorrência.
  */
 export const updateIssueUpvotes = async (issueId: string, newUpvotes: number) => {
     const issueRef = doc(db, 'issues', issueId);
@@ -164,9 +171,8 @@ export const updateIssueUpvotes = async (issueId: string, newUpvotes: number) =>
 };
 
 /**
- * Atualiza o status de uma ocorrência.
- * @param {string} issueId O ID da ocorrência.
- * @param {Issue['status']} newStatus O novo status.
+ * @function updateIssueStatus
+ * @description Atualiza o status de uma ocorrência (usado pelo admin).
  */
 export const updateIssueStatus = async (issueId: string, newStatus: Issue['status']) => {
     const issueRef = doc(db, 'issues', issueId);
@@ -174,8 +180,8 @@ export const updateIssueStatus = async (issueId: string, newStatus: Issue['statu
 };
 
 /**
- * Exclui uma ocorrência do Firestore.
- * @param {string} issueId O ID da ocorrência a ser excluída.
+ * @function deleteIssue
+ * @description Exclui uma ocorrência do Firestore (usado pelo admin).
  */
 export const deleteIssue = async (issueId: string) => {
   const issueRef = doc(db, 'issues', issueId);
@@ -183,11 +189,8 @@ export const deleteIssue = async (issueId: string) => {
 };
 
 /**
- * Adiciona um novo comentário a uma ocorrência.
- * @param {string} issueId O ID da ocorrência.
- * @param {string} content O conteúdo do comentário.
- * @param {AppUser} user O objeto do usuário que está comentando.
- * @throws {Error} Se o comentário estiver vazio ou o usuário não estiver autenticado.
+ * @function addCommentToIssue
+ * @description Adiciona um novo comentário a uma ocorrência.
  */
 export const addCommentToIssue = async (
     issueId: string, 
@@ -199,7 +202,6 @@ export const addCommentToIssue = async (
 
     const issueRef = doc(db, 'issues', issueId);
     
-    // Cria o objeto do novo comentário, com um ID único e timestamp.
     const newComment: CommentData = {
         id: uuidv4(),
         content: content.trim(),
@@ -210,17 +212,15 @@ export const addCommentToIssue = async (
         createdAt: Timestamp.now()
     };
 
-    // Usa `arrayUnion` para adicionar o novo comentário ao array de comentários atomicamente.
+    // Usa `arrayUnion` para adicionar o novo comentário ao array atomicamente.
     await updateDoc(issueRef, {
         comments: arrayUnion(newComment)
     });
 };
 
 /**
- * Exclui um comentário de uma ocorrência.
- * @param {string} issueId O ID da ocorrência.
- * @param {string} commentId O ID do comentário a ser excluído.
- * @throws {Error} Se a ocorrência não for encontrada.
+ * @function deleteCommentFromIssue
+ * @description Exclui um comentário de uma ocorrência (usado pelo admin).
  */
 export const deleteCommentFromIssue = async (issueId: string, commentId: string) => {
   const issueRef = doc(db, 'issues', issueId);
@@ -229,12 +229,11 @@ export const deleteCommentFromIssue = async (issueId: string, commentId: string)
     throw new Error('Ocorrência não encontrada.');
   }
   
-  // Para remover um item de um array no Firestore, precisamos ler o array,
-  // remover o item no lado do cliente e, em seguida, reescrever o array inteiro.
   const issueData = issueSnap.data() as IssueData;
   const commentToDelete = issueData.comments.find((c: CommentData) => c.id === commentId);
 
   if (commentToDelete) {
+    // Usa `arrayRemove` para remover o objeto do comentário do array atomicamente.
     await updateDoc(issueRef, {
       comments: arrayRemove(commentToDelete)
     });

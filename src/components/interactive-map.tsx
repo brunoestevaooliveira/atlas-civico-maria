@@ -1,9 +1,12 @@
 /**
  * @file src/components/interactive-map.tsx
  * @fileoverview Componente wrapper que encapsula o mapa principal.
- * Ele serve como uma ponte, recebendo as ocorrências e o estilo do mapa da página principal
- * e repassando-os para o componente de mapa real (`Map`). O uso de `forwardRef` é crucial
- * para permitir que o componente pai (a página) controle diretamente a câmera do mapa (zoom, pitch, etc.).
+ * @important Ponto chave de arquitetura: Padrão de Encapsulamento.
+ * Este componente atua como uma "ponte" entre a página principal (`page.tsx`) e
+ * a implementação real do mapa (`Map.tsx`). Ele simplifica a API exposta para a página,
+ * recebendo apenas as props essenciais (ocorrências, estilo) e repassando-as.
+ * O uso de `forwardRef` é crucial para permitir que o componente pai (a página)
+ * controle diretamente a câmera do mapa (ex: `mapRef.current.flyTo(...)`).
  */
 
 'use client';
@@ -18,12 +21,13 @@ interface InteractiveMapProps {
   issues: Issue[];
   /** O estilo visual do mapa (ruas ou satélite). */
   mapStyle: 'streets' | 'satellite';
-  /** O tema atual da aplicação (claro ou escuro). */
+  /** O tema atual da aplicação (claro ou escuro), para estilização do mapa. */
   theme?: string;
 }
 
 /**
- * Encapsula o componente de mapa, agindo como uma ponte entre a página principal
+ * @component InteractiveMap
+ * @description Encapsula o componente de mapa, agindo como uma ponte entre a página principal
  * e a implementação do `react-map-gl`.
  * @param {InteractiveMapProps} props As propriedades do componente.
  * @param {React.Ref<MapRef>} ref A referência para o objeto do mapa, permitindo controle externo da câmera.
@@ -40,7 +44,7 @@ const InteractiveMap = forwardRef<MapRef, InteractiveMapProps>(({ issues, mapSty
   );
 });
 
-// Define um nome de exibição para o componente, útil para depuração.
+// Define um nome de exibição para o componente, útil para depuração no React DevTools.
 InteractiveMap.displayName = 'InteractiveMap';
 
 export default InteractiveMap;

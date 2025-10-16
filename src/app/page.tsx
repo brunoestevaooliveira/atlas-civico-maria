@@ -2,9 +2,9 @@
 /**
  * @file src/app/page.tsx
  * @fileoverview Componente principal da página do mapa interativo.
- * Este componente renderiza o mapa, os controles de busca e filtro,
- * e o painel de ocorrências recentes. A importação do mapa é feita
- * dinamicamente para garantir que ele só seja renderizado no lado do cliente.
+ * Este é o coração da aplicação, onde os principais componentes são orquestrados.
+ * Ele gerencia o estado das ocorrências, filtros, busca, e a interação entre o mapa
+ * e os painéis de controle e informações.
  */
 
 'use client';
@@ -44,7 +44,12 @@ import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 const UPVOTED_ISSUES_KEY = 'upvotedIssues';
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-// Importação dinâmica do mapa para desativar a renderização no lado do servidor (SSR).
+/**
+ * @important Ponto chave de performance: Importação dinâmica do mapa.
+ * A função `dynamic` do Next.js garante que o componente `InteractiveMap` só seja
+ * carregado no lado do cliente (navegador), pois mapas interativos dependem de APIs
+ * do navegador (como `window`) que não existem no ambiente do servidor (SSR).
+ */
 const InteractiveMap = dynamic(() => import('@/components/interactive-map'), {
   ssr: false,
   loading: () => <Skeleton className="h-full w-full" />,
@@ -52,7 +57,8 @@ const InteractiveMap = dynamic(() => import('@/components/interactive-map'), {
 
 
 /**
- * Componente da página principal que exibe o mapa interativo e a lista de ocorrências.
+ * @component MapPage
+ * @description O componente principal da página, que integra o mapa, controles e a lista de ocorrências.
  */
 export default function MapPage() {
   // --- ESTADOS (States) ---
@@ -85,21 +91,22 @@ export default function MapPage() {
   const router = useRouter();
   const { theme } = useTheme();
 
-  // --- INICIALIZAÇÃO DO GEOCODER ---
+  // --- INICIALIZAÇÃO DO GEOCODER (Busca de Endereços) ---
   useEffect(() => {
     if (!MAPBOX_TOKEN || geocoderRef.current || !geocoderContainerRef.current) return;
     
+    // Inicializa o serviço de geocodificação do Mapbox.
     const geocoder = new MapboxGeocoder({
         accessToken: MAPBOX_TOKEN,
-        marker: false,
+        marker: false, // Não mostra um marcador padrão; nós controlamos isso.
         countries: 'br', 
         language: 'pt-BR',
     });
     
-    // Anexa o controle a um container, mas o container principal permanece oculto.
-    // Isso é necessário para que a API funcione corretamente.
+    // Anexa o controle a um container oculto para a API funcionar.
     geocoder.addTo(geocoderContainerRef.current);
 
+    // Ouve os resultados da busca e atualiza o estado.
     geocoder.on('results', (e) => {
         setGeocoderResults(e.features);
         if (e.features.length > 0) {
@@ -107,6 +114,7 @@ export default function MapPage() {
         }
     });
     
+    // Limpa os resultados quando a busca é limpa.
     geocoder.on('clear', () => {
        setGeocoderResults([]);
        setIsGeocoderOpen(false);
@@ -120,15 +128,13 @@ export default function MapPage() {
   // --- MEMOS (useMemo) ---
 
   // Extrai e armazena uma lista de categorias únicas de todas as ocorrências.
-  // É recalculado apenas quando a lista de 'issues' muda.
   const allCategories = useMemo(() => {
     return [...new Set(issues.map(issue => issue.category))];
   }, [issues]);
 
-  // Estado que armazena as categorias selecionadas pelo usuário no filtro.
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   
-  // Efeito que inicializa as categorias selecionadas com todas as categorias disponíveis quando o app carrega.
+  // Efeito que inicializa os filtros com todas as categorias disponíveis no primeiro carregamento.
   useEffect(() => {
     if (allCategories.length > 0) {
       setSelectedCategories(allCategories);
@@ -136,10 +142,14 @@ export default function MapPage() {
   }, [allCategories]);
 
 
-  // Filtra e retorna a lista de ocorrências com base na busca e nos filtros de categoria.
+  /**
+   * @important Otimização de Performance com `useMemo`.
+   * Filtra a lista de ocorrências com base nos filtros selecionados. `useMemo` garante
+   * que esta operação (potencialmente custosa) só seja reexecutada quando as dependências
+   * (`issues` ou `selectedCategories`) mudarem, evitando recálculos em cada renderização.
+   */
   const filteredIssues = useMemo(() => {
     return issues.filter(issue => {
-      // Verifica se a categoria da ocorrência está na lista de categorias selecionadas.
       const categoryMatch = selectedCategories.length === 0 || selectedCategories.includes(issue.category);
       return categoryMatch;
     });
@@ -148,7 +158,7 @@ export default function MapPage() {
 
   // --- EFEITOS (useEffect) ---
   
-  // Efeito para acionar a busca do geocoder quando o texto de busca muda
+  // Dispara a busca do geocoder quando o texto de busca (debounced) muda.
   useEffect(() => {
     if (debouncedSearchQuery.trim() && geocoderRef.current) {
       geocoderRef.current.query(debouncedSearchQuery);
@@ -158,13 +168,20 @@ export default function MapPage() {
     }
   }, [debouncedSearchQuery]);
 
-  // Efeito que se inscreve para ouvir as atualizações de ocorrências do Firestore em tempo real.
+  /**
+   * @important Ponto central de dados: Inscrição em tempo real.
+   * Este `useEffect` se inscreve para ouvir atualizações da coleção de ocorrências
+   * no Firestore. A função `listenToIssues` (do issue-service) estabelece a conexão
+   * e o callback `setIssues` atualiza o estado local, fazendo com que a UI reaja
+   * automaticamente a novas ocorrências ou mudanças. A função de limpeza (`unsubscribe`)
+   * é crucial para evitar memory leaks.
+   */
   useEffect(() => {
     const unsubscribe = listenToIssues(setIssues);
     return () => unsubscribe();
   }, []);
 
-  // Efeito que carrega os IDs das ocorrências apoiadas pelo usuário do localStorage quando o appUser é definido.
+  // Carrega os IDs das ocorrências apoiadas pelo usuário do localStorage.
   useEffect(() => {
     if (!appUser) return;
     try {
@@ -181,9 +198,9 @@ export default function MapPage() {
   // --- FUNÇÕES AUXILIARES ---
 
   /**
-   * Manipula a lógica de apoio (upvote) a uma ocorrência.
-   * @param issueId ID da ocorrência a ser apoiada.
-   * @param currentUpvotes Número atual de apoios.
+   * @function handleUpvote
+   * @description Lida com a lógica de apoio a uma ocorrência, combinando atualização
+   * otimista da UI, chamada ao serviço de backend e persistência local (localStorage).
    */
   const handleUpvote = async (issueId: string, currentUpvotes: number) => {
     if (!appUser) {
@@ -198,12 +215,13 @@ export default function MapPage() {
     if (upvotedIssues.has(issueId)) return; 
     
     const newUpvotedSet = new Set(upvotedIssues).add(issueId);
-    setUpvotedIssues(newUpvotedSet);
+    setUpvotedIssues(newUpvotedSet); // Atualização otimista
 
     try {
-      await updateIssueUpvotes(issueId, currentUpvotes + 1);
-       localStorage.setItem(`${UPVOTED_ISSUES_KEY}_${appUser.uid}`, JSON.stringify(Array.from(newUpvotedSet)));
+      await updateIssueUpvotes(issueId, currentUpvotes + 1); // Chamada de API
+       localStorage.setItem(`${UPVOTED_ISSUES_KEY}_${appUser.uid}`, JSON.stringify(Array.from(newUpvotedSet))); // Persistência
     } catch (error) {
+       // Reversão em caso de erro
        const revertedUpvotedSet = new Set(upvotedIssues);
        revertedUpvotedSet.delete(issueId);
        setUpvotedIssues(revertedUpvotedSet);
@@ -228,9 +246,11 @@ export default function MapPage() {
     );
   };
   
+  // Funções para controlar a câmera do mapa (visão 2D/3D).
   const set3DView = () => mapRef.current?.flyTo({ pitch: 60, bearing: -20, duration: 1500 });
   const set2DView = () => mapRef.current?.flyTo({ pitch: 0, bearing: 0, duration: 1500 });
 
+  // Centraliza o mapa no resultado da busca clicado.
   const handleGeocoderResultClick = (result: any) => {
       const [lng, lat] = result.center;
       mapRef.current?.flyTo({
@@ -242,6 +262,7 @@ export default function MapPage() {
       setIsGeocoderOpen(false);
   }
 
+  // Componente para o painel de ocorrências recentes.
   const RecentIssuesPanelContent = () => (
       <div className="space-y-4">
         {filteredIssues.length > 0 ? filteredIssues.sort((a, b) => b.reportedAt.getTime() - a.reportedAt.getTime()).map((issue) => (
@@ -258,6 +279,7 @@ export default function MapPage() {
       </div>
   );
 
+  // Componente para os controles do mapa (busca, filtros, etc.).
   const MapControlsContent = () => (
     <div className="space-y-4">
       <div className="relative">
@@ -374,6 +396,7 @@ export default function MapPage() {
       <div className="relative flex-grow">
         <InteractiveMap issues={showIssues ? filteredIssues : []} mapStyle={mapStyle} ref={mapRef} theme={theme}/>
 
+        {/* --- Layout de Desktop: Controles à esquerda, painel à direita --- */}
         <div className="absolute top-24 left-4 z-10 hidden md:block w-96 space-y-4">
           <Card className="rounded-lg border border-white/20 bg-white/30 dark:bg-black/30 shadow-lg backdrop-blur-xl">
             <CardContent className="p-4" onClick={(e) => e.stopPropagation()}>
@@ -427,6 +450,7 @@ export default function MapPage() {
           </div>
         </div>
         
+        {/* --- Layout Mobile: Botões flutuantes para abrir painéis (Sheets) --- */}
         <div className="absolute top-24 right-4 z-10 md:hidden flex flex-col gap-2">
            <Sheet>
             <SheetTrigger asChild>
