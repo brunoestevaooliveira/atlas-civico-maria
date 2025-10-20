@@ -207,9 +207,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await signInWithPopup(auth, provider);
     } catch (error: any) {
         let description = error.message || 'Não foi possível autenticar com o Google.';
-        if (error.code === 'auth/unauthorized-domain') {
-            description = 'Este domínio não está autorizado para login. Por favor, adicione-o no Console do Firebase > Authentication > Settings > Authorized domains.';
-        } else if (error.code === 'auth/popup-closed-by-user') {
+        if (error.code === 'auth/popup-closed-by-user') {
             return;
         }
         
